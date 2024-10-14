@@ -1,0 +1,98 @@
+# RFC 5: Infrastructure Tagging
+
+- **Original Author(s)**: Not an LLM
+- **Tracking Issue(s)**: -
+
+## TLDR
+
+All resources deployed in a cloud platform **MUST** be tagged with a `ServiceCatalogueId`, `ServiceName`, `Environment`, and `Repository`, with labels being used in place of tags when deployed to Kubernetes.
+
+## Applicability Statement
+
+This RFC is **Required**
+
+## Effective Dates
+
+This RFC **MUST** be followed immediately for all new projects created after the 1st July 2022. All existing projects **SHOULD** work towards becoming compliant as soon as is feasible, and repositories that are still being committed to **MUST** be compliant no later than 30th June 2023.
+
+## Motivation
+
+Without infrastructure tags, resource and cost allocation of services within our AWS accounts is very challenging.
+
+By enforcing a standard set of tags, developers are able to quickly identify which service each resources powers, which team is responsible for maintaining it, and where to find the code that manages it. We can use automated tooling to report on cost of ownership and security issues, and quickly identify teams that can fix any issues.
+
+## Proposal
+
+The following tags **MUST** be present on all infrastructure:
+
+- **ServiceCatalogueId** The Application ID associated to the service within the [ServiceNow CMDB][cmdb] e.g. `nuk_data_grid` (see [RFC437][rfc437])
+- **ServiceName** The name of the service which owns the infrastructure. Recommendation is to keep it the same as the GitHub repository name, if sensible. e.g. `cps-render`
+- **Environment** The environment this is for. See below. e.g. `prod`
+- **Repository** A link to the Github repository that contains the [Infrastructure As Code](https://github.com/newsuk/nuk-rfcs/blob/main/active/0044-infrastructure-as-code.md) that deployed this resource. This should be the root of the repository, not a directory or package in it (to avoid being fragile during refactoring), e.g. `https://github.com/newsuk/cps-content-render`.
+
+The `ServiceCatalogueId` can be obtained from the [ServiceNow CMDB][cmdb]. New services can be added by using the [CDQ Application in Sofi][cmdb] (you might need to submit a ticket requesting access).
+
+The following are the primary acceptable forms of environment names: `prod`, `staging`, `dev`, `pr`. More environment values **MAY** be used where it is sensible to do so, but these are considered the "standard" set and **SHOULD** be used preferentially.
+
+This specifies the minimum set of tags required, however you **MAY** add other tags that are useful to your team.
+
+#### Implementation
+
+The easiest and recommended way to implement this in projects using Terraform is with the [default_tags](https://www.hashicorp.com/blog/default-tags-in-the-terraform-aws-provider) configuration block. For example:
+
+```hcl
+provider "aws" {
+  default_tags {
+    tags = {
+      ServiceCatalogueId = "nuk_example"
+      ServiceName        = "nuk-example"
+      Environment        = "prod"
+      Repository         = "https://github.com/newsuk/nuk-example"
+    }
+  }
+}
+```
+
+### GCP
+
+The GCP platform limits the characters allowed to be used within tags: Keys and values can contain only lowercase letters, numeric characters, underscores, and dashes.
+
+For GCP the same tags are required, however the keys are converted to lowercase and values are converted to lower kebab-case. The repository is just the Github organisation and repo path separated with two underscores (`__`), e.g.:
+
+```
+servicecatalogueid: 1
+servicename: servive-catalogue
+environment: prod
+repository: newsuk__nuk-service-catalogue
+```
+
+### Kubernetes
+
+This proposal also applies to _all_ Kubernetes resources, including but not limited to: Service, Deployment, Ingress, Pod, ServiceAccount, Secret, NetworkPolicy and Ingress.
+
+The label names will be in a format similar to the [recommended labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/). Additionally, Kubernetes labels can only contain: dashes (-), underscores (\_), dots (.), and alphanumerics.
+
+Similar to GCP, all labels are converted to lower kebab-case, and the repository is just the Github organisation and repo path separated with underscores (`__`), e.g.:
+
+```
+news.co.uk/service-catalogue-id: 1
+news.co.uk/service-name: service-catalogue
+news.co.uk/environment: prod
+news.co.uk/repository: newsuk__nuk-service-catalogue
+```
+
+## Exceptions to RFC Applicability
+
+Given the shared nature of our infrastructure accounts and some technical constraints it has become clear that there are elements that engineering teams will be unable to tag. The exception listing below categorises exception items under these two broad headers so that any manual or automated compliance reports can be mindful of them when being collated to avoid frustration.
+
+#### Global exceptions
+
+- AWS CloudTrail
+- AWS GuardDuty
+
+#### Technical exceptions
+
+- AWS system defined KMS keys
+
+[cmdb]: https://sofi.newscorp.com/esc?id=cdq_application
+[rfc437]: https://github.com/newsuk/nuk-rfcs/blob/main/active/0437-service-catalogue.md
